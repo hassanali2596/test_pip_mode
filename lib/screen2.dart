@@ -1,3 +1,4 @@
+import 'dart:developer';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -21,68 +22,98 @@ class Screen2 extends StatefulWidget {
   State<Screen2> createState() => _Screen2State();
 }
 
-class _Screen2State extends State<Screen2>with WidgetsBindingObserver {
+class _Screen2State extends State<Screen2> with WidgetsBindingObserver {
+  bool isPIPActive = false;
 
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: Text(widget.title),
-      ),
-      body: Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: <Widget>[
-            Text(
-              'Screen 2',
-              style: Theme.of(context).textTheme.headlineMedium,
-            ),
-            const SizedBox(height: 40,),
-            ElevatedButton(onPressed: (){
-              destroyPip();
-              Navigator.pop(context);
-
-            }, child: const Text ("End Call And Back"))
-          ],
-        ),
-      ),
-    );
-  }
   @override
   void initState() {
     super.initState();
+    if (Platform.isAndroid) {
+      HMSAndroidPIPController.setup(autoEnterPip: true, aspectRatio: [9, 16]);
+    } else {
+      HMSIOSPIPController.setup(autoEnterPip: true, aspectRatio: [9, 16]);
+    }
     WidgetsBinding.instance.addObserver(this);
   }
+
   @override
   void dispose() {
     super.dispose();
     WidgetsBinding.instance.removeObserver(this);
   }
+
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.inactive) {
-      enterPiPMode();
-      // The app is now in the background
-      print('App inactive');
+      if (!isPIPActive) {
+        enterPiPMode();
+        // The app is now in the background
+        print('App inactive');
+      }
+    } else if (state == AppLifecycleState.resumed) {
+      updatePIPState();
     }
-
   }
-   enterPiPMode()  {
-    //
+
+  updatePIPState() async {
+    isPIPActive = await HMSAndroidPIPController.isActive();
+  }
+
+  enterPiPMode() {
     if (Platform.isAndroid) {
-      HMSAndroidPIPController.setup(autoEnterPip: true,aspectRatio: [9,16]);
-      HMSAndroidPIPController.start(autoEnterPip: true,aspectRatio: [9,16]);
+      HMSAndroidPIPController.start();
+      isPIPActive = true;
     } else if (Platform.isIOS) {
-      HMSIOSPIPController.setup(autoEnterPip: true,aspectRatio: [9,16]);
       HMSIOSPIPController.start();
+      HMSIOSPIPController.changeText(text: "Screen 2");
     }
   }
-  destroyPip()  {
-    if (Platform.isAndroid) {
-      HMSAndroidPIPController.destroy();
-    } else if (Platform.isIOS) {
-      HMSIOSPIPController.destroy();
-    }
 
+  Future<bool> destroyPip() async {
+    bool isPIPDestroyed = false;
+    if (Platform.isAndroid) {
+      isPIPDestroyed = await HMSAndroidPIPController.destroy();
+    } else if (Platform.isIOS) {
+      isPIPDestroyed = await HMSIOSPIPController.destroy();
+    }
+    isPIPActive = false;
+    return isPIPDestroyed;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return PopScope(
+      canPop: true,
+      onPopInvoked: (_) {
+        destroyPip();
+      },
+      child: Scaffold(
+        appBar: AppBar(
+          title: Text(widget.title),
+        ),
+        body: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: <Widget>[
+              Text(
+                'Screen 2',
+                style: Theme.of(context).textTheme.headlineMedium,
+              ),
+              const SizedBox(
+                height: 40,
+              ),
+              ElevatedButton(
+                  onPressed: () async {
+                    bool isPIPDestroyed = await destroyPip();
+                    log("PIP Destroyed: $isPIPDestroyed");
+
+                    Navigator.pop(context);
+                  },
+                  child: const Text("End Call And Back"))
+            ],
+          ),
+        ),
+      ),
+    );
   }
 }
